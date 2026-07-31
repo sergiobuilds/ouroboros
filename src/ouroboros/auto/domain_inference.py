@@ -330,9 +330,9 @@ def _matches_game_2d(ledger: SeedDraftLedger) -> bool:
     goal = _goal_text(ledger)
     if not (outputs or goal):
         return False
-    return _any_of(
-        outputs + " " + goal,
-        ("render", "frame", "canvas", "screen", "game loop", "playable", "2d game", "scene"),
+    text = outputs + " " + goal
+    return _any_of(text, ("game loop", "playable", "2d game")) or (
+        "game" in text and "canvas" in text
     )
 
 

@@ -114,6 +114,19 @@ def test_single_match_game_2d() -> None:
     assert result.single is TaskClass.GAME_2D
 
 
+def test_mobile_web_scene_does_not_match_game_2d() -> None:
+    ledger = _bare_ledger(
+        "Build a mobile web prototype that selects a future-film scene and renders it on screen"
+    )
+    _seed_section(
+        ledger,
+        "outputs",
+        value="A mobile PWA screen showing the selected regional scene and match-cut frame",
+    )
+    result = derive_domain_from_ledger(ledger)
+    assert TaskClass.GAME_2D not in result.classes
+
+
 def test_single_match_refactor_in_place() -> None:
     ledger = _bare_ledger("Refactor src/foo into vertical slices")
     _seed_section(
