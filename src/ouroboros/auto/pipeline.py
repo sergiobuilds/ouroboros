@@ -96,19 +96,9 @@ from ouroboros.runtime.watchdog import (
 # any "let the system rewrite the spec" option: keep the spec contract
 # under human control.
 #
-# Earlier drafts of this cue advertised a third path ("relax AC via --resume
-# + edited seed"). That guidance was wrong: ``AutoPipeline.run()`` resumes
-# late-phase blockers (EVALUATE / UNSTUCK_LATERAL) by reconstructing the
-# Seed from ``state.seed_artifact``, which is always populated on the
-# normal auto path. Editing the on-disk ``state.seed_path`` file therefore
-# has no effect — the next resume re-grades against the same in-state AC
-# and loops back to the identical blocker. Until the resume contract is
-# changed to honor a freshly-edited seed file on late-phase resume (a
-# separate PR with its own end-to-end coverage), only two operator paths
-# are actually functional, and the cue must say so.
 _RECOVERY_BLOCKED_CHOICES: str = (
-    "next: (1) re-interview with a refined goal (the in-state Seed cannot "
-    "be edited mid-session); (2) abandon this session"
+    "next: (1) re-interview with a refined goal; (2) edit the persisted Seed "
+    "and resume after a pre-run Seed QA blocker; (3) abandon this session"
 )
 
 
@@ -1059,10 +1049,16 @@ class AutoPipeline:
                 self._save(state)
         elif (
             state.phase == AutoPhase.REVIEW
-            and resume_tool_name in {"grade_gate", "seed_loader"}
+            and resume_tool_name in {"grade_gate", "seed_loader", "seed_qa"}
             and self.seed_loader is not None
             and state.seed_path
         ):
+            # A Seed QA blocker may require an operator to make a substantive
+            # contract edit that the bounded mechanical repair loop cannot
+            # infer safely. Honor that persisted edit on resume instead of
+            # reconstructing the same failing Seed from ``seed_artifact`` and
+            # looping forever. ``_load_seed`` validates and normalizes the
+            # file before replacing the in-state artifact.
             seed = self._load_seed(state, state.seed_path)
             if seed is None:
                 return self._result(state, ledger, blocker=state.last_error)
