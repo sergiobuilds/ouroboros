@@ -409,8 +409,7 @@ class DependencyAnalyzer:
                 llm_dependencies = await self._analyze_with_llm(
                     tuple(spec.content for spec in specs)
                 )
-                for index, values in llm_dependencies.items():
-                    dependencies.setdefault(index, set()).update(values)
+                _merge_acyclic_llm_dependencies(dependencies, llm_dependencies)
                 method = "llm+structured"
             except Exception as exc:
                 log.warning(
@@ -638,6 +637,53 @@ class DependencyAnalyzer:
             if 0 <= value < spec_count:
                 return value
         return None
+
+
+def _merge_acyclic_llm_dependencies(
+    dependencies: dict[int, set[int]],
+    llm_dependencies: dict[int, list[int]],
+) -> None:
+    """Merge inferred edges without letting an LLM-created cycle poison staging."""
+    candidates = sorted(
+        (
+            (ac_index, dependency)
+            for ac_index, values in llm_dependencies.items()
+            for dependency in values
+            if ac_index != dependency
+        ),
+        key=lambda edge: (edge[1] >= edge[0], edge[0], edge[1]),
+    )
+    for ac_index, dependency in candidates:
+        current = dependencies.setdefault(ac_index, set())
+        if dependency in current:
+            continue
+        if _dependency_path_exists(dependencies, start=dependency, target=ac_index):
+            log.warning(
+                "dependency_analyzer.cyclic_llm_edge_dropped",
+                ac_index=ac_index,
+                dependency=dependency,
+            )
+            continue
+        current.add(dependency)
+
+
+def _dependency_path_exists(
+    dependencies: dict[int, set[int]],
+    *,
+    start: int,
+    target: int,
+) -> bool:
+    pending = [start]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if current == target:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(dependencies.get(current, ()))
+    return False
 
 
 def _compute_execution_levels(

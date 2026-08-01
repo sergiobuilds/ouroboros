@@ -275,6 +275,30 @@ class TestDependencyAnalyzer:
         )
 
     @pytest.mark.asyncio
+    async def test_analyze_drops_llm_edges_that_would_create_a_dependency_cycle(self) -> None:
+        analyzer = DependencyAnalyzer(
+            llm_adapter=StubLLMAdapter(
+                '{"dependencies": ['
+                '{"ac_index": 0, "depends_on": [1]},'
+                '{"ac_index": 1, "depends_on": [0]}'
+                ']}'
+            )
+        )
+        specs = (
+            ACDependencySpec(index=0, content="Create the baseline"),
+            ACDependencySpec(index=1, content="Verify the baseline"),
+        )
+
+        result = await analyzer.analyze(specs)
+
+        assert result.is_ok
+        graph = result.value
+        assert graph.get_dependencies(0) == ()
+        assert graph.get_dependencies(1) == (0,)
+        assert graph.execution_levels == ((0,), (1,))
+        assert graph.to_execution_plan().execution_levels == ((0,), (1,))
+
+    @pytest.mark.asyncio
     async def test_analyze_falls_back_to_structured_dependencies_when_llm_fails(self) -> None:
         analyzer = DependencyAnalyzer(
             llm_adapter=StubLLMAdapter(error=ProviderError("llm unavailable", provider="test"))
